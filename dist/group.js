@@ -15,9 +15,10 @@ export function validGroupSession(saved,fresh){
 
 export function groupMarkup({events,session,code,art}){
   const byId=new Map(events.map(card=>[card.id,card]));
-  const correctOrder=sorted(events);
-  const score=scoreOrder(session.order.map(id=>byId.get(id)));
-  const count=events.length;
+  const cards=session.order.map(id=>byId.get(id));
+  const correctOrder=sorted(cards);
+  const score=scoreOrder(cards);
+  const count=cards.length;
   const cardMarkup=(id,index)=>{
     const event=byId.get(id),correct=correctOrder[index].id===id;
     const state=session.checked?(correct?'correct':'incorrect'):'';
@@ -35,11 +36,11 @@ export function groupMarkup({events,session,code,art}){
   return `<section class="game-view group-view">
     <div class="game-top"><button class="text-link" data-action="setup">← Game setup</button><div class="game-code-badge">GAME <strong>${code}</strong><span>· Group activity</span><button data-action="share" aria-label="Copy game link" title="Copy game link">↗</button></div></div>
     <div class="game-heading"><div><p class="eyebrow">GAME 01 / PAIRS & GROUPS</p><h1 lang="es">Antes o Después</h1></div><button class="secondary" data-action="language">Language reference ↗</button></div>
-    <div class="board-instruction"><div><h2>One group. All ${count} cards.</h2><p>Agree on the order together. Drag cards or choose a position. Open a card for a simple Spanish clue.</p></div><span class="direction-label" lang="es">ANTES <span>→</span> DESPUÉS</span></div>
+    <div class="board-instruction"><div><h2>One group. ${count} random cards.</h2><p>Agree on the order together. Drag cards or choose a position. Open a card for a simple Spanish clue.</p></div><span class="direction-label" lang="es">ANTES <span>→</span> DESPUÉS</span></div>
     <div class="group-toolbar"><div class="group-status" role="status">${session.checked?`<strong>${score}<small> / ${count}</small></strong><span>${score===count?'All cards are in order.':'cards in the correct position. Keep working together.'}</span>`:`<strong>${count} cards</strong><span>${session.revealed?'Dates revealed. You can still move the cards.':'Dates hidden. Work together on one screen.'}</span>`}</div><div class="group-actions"><button class="primary" data-action="check">Check group order ✓</button><button class="secondary" data-action="reveal-dates">${session.revealed?'Hide dates':'Reveal dates'}</button><button class="secondary" data-action="solution">Show correct order</button></div></div>
     <div class="timeline-track" aria-hidden="true" lang="es"><span>ANTES</span><i></i><span>DESPUÉS</span></div>
     <div class="hand-grid group-hand">${session.order.map(cardMarkup).join('')}</div>
     <div class="board-bottom"><p lang="es">«La rueda apareció antes que el papel.»<br><span class="small-note" lang="en">Say your ideas in Spanish. Check as often as you need.</span></p><button class="primary" data-action="check">Check group order ✓</button></div>
-    <div class="game-note"><span>No turns or individual scores. The group orders the complete deck.</span><button class="text-link" data-action="restart">Restart group game</button></div>
+    <div class="game-note"><span>No turns or individual scores. The group orders these ${count} cards together.</span><button class="text-link" data-action="restart">Restart group game</button></div>
   </section>`;
 }

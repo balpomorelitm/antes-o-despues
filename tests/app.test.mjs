@@ -81,7 +81,7 @@ async function boot(context, query = '', saved = {}) {
   };
 }
 
-test('group setup rejects invalid codes and starts the complete deck without player or seat controls', async context => {
+test('group setup rejects invalid codes and starts six cards without player or seat controls', async context => {
   const ui = await boot(context);
   assert.equal(ui.all('[data-players], [data-seat]').length, 0);
   for (const code of ['', '000', '101', 'abc']) {
@@ -95,8 +95,9 @@ test('group setup rejects invalid codes and starts the complete deck without pla
   ui.input('#game-code', '7');
   await ui.click('[data-action="start"]');
   assert.deepEqual(ui.titles(), groupDeal(EVENTS, '007').map(card => card.title));
-  assert.equal(ui.all('.game-card').length, EVENTS.length);
-  assert.equal(ui.all('.hidden-date').length, EVENTS.length);
+  assert.equal(ui.all('.game-card').length, 6);
+  assert.equal(ui.all('.hidden-date').length, 6);
+  assert.ok(ui.all('[data-position]').every(select => select.options.length === 6), 'Positions are limited to the six selected cards');
   assert.equal(ui.all('.card-date').length, 0);
   assert.equal(ui.all('[data-switch], [data-action="next-player"]').length, 0);
   assert.equal(ui.window.location.search, '?game=007&mode=timeline');
@@ -134,28 +135,28 @@ test('group sorting stays editable after checks and hides dates until an explici
   assert.deepEqual(ui.readGroup('023').order, expected.map(card => card.id));
   assert.equal(ui.window.document.activeElement.closest('.game-card').dataset.cardIndex, '1');
   await ui.click('[data-action="check"]');
-  assert.equal(ui.text('.group-status strong').replace(/\s/g, ''), `${scoreOrder(expected)}/${EVENTS.length}`);
+  assert.equal(ui.text('.group-status strong').replace(/\s/g, ''), `${scoreOrder(expected)}/${expected.length}`);
   assert.equal(ui.all('.game-card.correct').length, scoreOrder(expected));
   assert.equal(ui.all('.card-date').length, 0);
-  assert.equal(ui.all('.game-card[draggable="true"]').length, EVENTS.length);
+  assert.equal(ui.all('.game-card[draggable="true"]').length, expected.length);
   assert.ok(ui.all('select[data-position]').every(select => !select.disabled));
   assert.equal(ui.readGroup('023').checked, true);
   await ui.click('[data-move="1,0"]');
   expected = moveCard(expected, 1, 0);
   assert.equal(ui.readGroup('023').checked, false, 'Moving clears stale position feedback');
-  ui.change('[data-position="0"]', String(EVENTS.length - 1));
-  expected = moveCard(expected, 0, EVENTS.length - 1);
+  ui.change('[data-position="0"]', String(expected.length - 1));
+  expected = moveCard(expected, 0, expected.length - 1);
   assert.deepEqual(ui.titles(), expected.map(card => card.title));
-  assert.equal(ui.window.document.activeElement.dataset.position, String(EVENTS.length - 1));
+  assert.equal(ui.window.document.activeElement.dataset.position, String(expected.length - 1));
   await ui.click('[data-action="check"]');
-  ui.drag(EVENTS.length - 1, 2);
-  expected = moveCard(expected, EVENTS.length - 1, 2);
+  ui.drag(expected.length - 1, 2);
+  expected = moveCard(expected, expected.length - 1, 2);
   assert.deepEqual(ui.titles(), expected.map(card => card.title));
   assert.equal(ui.readGroup('023').checked, false);
   assert.equal(ui.all('.card-date').length, 0);
   await ui.click('[data-action="reveal-dates"]');
-  assert.equal(ui.all('.card-date').length, EVENTS.length);
-  assert.equal(ui.all('.card-content[data-detail]').length, EVENTS.length);
+  assert.equal(ui.all('.card-date').length, expected.length);
+  assert.equal(ui.all('.card-content[data-detail]').length, expected.length);
   await ui.click('.card-content[data-detail]');
   assert.equal(ui.text('#modal-content .date-block strong'), yearLabel(expected[0].year));
   assert.equal(ui.text('#modal-content .date-block span'), expected[0].approx);
@@ -169,10 +170,10 @@ test('group sorting stays editable after checks and hides dates until an explici
   assert.equal(ui.readGroup('023').checked, true);
   assert.equal(ui.all('.card-date').length, 0);
   await ui.click('[data-action="solution"]');
-  assert.deepEqual(ui.titles(), sorted(EVENTS).map(card => card.title));
-  assert.equal(ui.all('.game-card.correct').length, EVENTS.length);
-  assert.equal(ui.all('.card-date').length, EVENTS.length);
-  assert.deepEqual(ui.readGroup('023'), { version: 2, order: sorted(EVENTS).map(card => card.id), checked: true, revealed: true });
+  assert.deepEqual(ui.titles(), sorted(expected).map(card => card.title));
+  assert.equal(ui.all('.game-card.correct').length, 6);
+  assert.equal(ui.all('.card-date').length, 6);
+  assert.deepEqual(ui.readGroup('023'), { version: 2, order: sorted(expected).map(card => card.id), checked: true, revealed: true });
   await ui.click('[data-move="0,1"]');
   assert.equal(ui.readGroup('023').checked, false);
   await ui.click('[data-action="restart"]');
@@ -183,7 +184,40 @@ test('group sorting stays editable after checks and hides dates until an explici
   assert.equal(ui.all('[data-switch], [data-action="next-player"]').length, 0);
 });
 
-test('describe and guess hides answers, completes five clues, and credits the guesser', async context => {
+test('reloading a six-card group game restores only its selected cards and feedback', async context => {
+  const code = '064';
+  const cards = moveCard(groupDeal(EVENTS, code), 0, 5);
+  const saved = { version: 2, order: cards.map(card => card.id), checked: true, revealed: true };
+  const ui = await boot(context, `?game=${code}&mode=timeline`, {
+    [groupKey(code)]: JSON.stringify(saved)
+  });
+  await ui.click('[data-action="start"]');
+  assert.deepEqual(ui.titles(), cards.map(card => card.title));
+  assert.equal(ui.all('.game-card').length, 6);
+  assert.equal(ui.all('.card-date').length, 6);
+  assert.equal(ui.text('.group-status strong').replace(/\s/g, ''), `${scoreOrder(cards)}/6`);
+  assert.equal(ui.all('.game-card.correct').length, scoreOrder(cards));
+  await ui.click('[data-action="solution"]');
+  assert.deepEqual(ui.titles(), sorted(cards).map(card => card.title));
+  assert.deepEqual(ui.readGroup(code), { ...saved, order: sorted(cards).map(card => card.id) });
+});
+
+test('saved full-deck group games restart with six cards and cleared feedback', async context => {
+  const code = '065';
+  const ui = await boot(context, `?game=${code}&mode=timeline`, {
+    [groupKey(code)]: JSON.stringify({ version: 2, order: sorted(EVENTS).map(card => card.id), checked: true, revealed: true })
+  });
+  await ui.click('[data-action="start"]');
+  const cards = groupDeal(EVENTS, code);
+  assert.deepEqual(ui.titles(), cards.map(card => card.title));
+  assert.equal(ui.all('.game-card').length, 6);
+  assert.equal(ui.all('.hidden-date').length, 6);
+  assert.equal(ui.all('.card-date, .game-card.correct, .game-card.incorrect').length, 0);
+  await ui.click('[data-action="check"]');
+  assert.deepEqual(ui.readGroup(code), { version: 2, order: cards.map(card => card.id), checked: true, revealed: false });
+});
+
+test('describe and guess shows dates before answers, completes five clues, and credits the guesser', async context => {
   const ui = await boot(context, '?game=038&players=2&mode=guess');
   const hands = deal(EVENTS, '038', 2);
   await ui.click('[data-action="start"]');
@@ -192,10 +226,16 @@ test('describe and guess hides answers, completes five clues, and credits the gu
     const card = hands[0][index];
     assert.equal(ui.text('.clue-text'), card.before);
     assert.equal(ui.find('.guess-reveal'), null);
-    assert.equal(ui.find('.clue-card .date-block'), null);
+    assert.equal(ui.text('.clue-card .date-block strong'), yearLabel(card.year));
+    assert.equal(ui.text('.clue-card .date-block span'), card.approx);
+    assert.equal(ui.find('.clue-card .date-block').getAttribute('lang'), 'es');
+    assert.equal(ui.find('.clue-card h2'), null, 'The invention name is hidden until the answer');
+    assert.equal(ui.find('.clue-card [data-detail]'), null, 'Answer details are unavailable until the answer');
+    assert.ok(!ui.text('.clue-card').includes(card.title), 'Showing the date does not reveal the invention');
     assert.equal(ui.find('.clue-card svg'), null, 'Artwork is hidden until the guess');
     await ui.click('[data-action="reveal"]');
     assert.equal(ui.text('.guess-reveal h2'), card.title);
+    assert.equal(ui.all('.clue-card .date-block').length, 1, 'The date stays visible without being duplicated');
     assert.equal(ui.text('.clue-card .date-block strong'), yearLabel(card.year));
     assert.equal(ui.text('.clue-card .date-block span'), card.approx);
     assert.equal(ui.text('.guess-reveal p'), card.after);
