@@ -24,6 +24,12 @@ npm start
 
 Open http://127.0.0.1:4173. The `dist` directory is also ready for any static web host.
 
+## GitHub Pages
+
+The [deployment workflow](.github/workflows/deploy-pages.yml) runs the tests on Node.js 24 and publishes the contents of `dist` to GitHub Pages whenever `main` changes. No build step is needed. You can also run **Deploy to GitHub Pages** manually from the repository's Actions tab, selecting `main`.
+
+In **Settings > Pages > Build and deployment**, the source must be **GitHub Actions**. The workflow uploads `dist` as the `github-pages` artifact and deploys it to the `github-pages` environment. The published game is at https://balpomorelitm.github.io/antes-o-despues/.
+
 ## Check
 
 ```sh
