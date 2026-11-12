@@ -2,6 +2,8 @@
 
 Two illustrated Spanish practice games for two or three people, with English controls and instructions.
 
+The imperial interface uses a Roman terrace background, midnight-blue panels, burgundy banners, gold frames and 29 jewel-coloured illustrations. The original background asset and the ImageGen prompt are documented in [the art direction notes](docs/ART_DIRECTION.md).
+
 - **Put it in order:** arrange five cards from oldest to newest, then reveal dates. The first check awards one point per correctly positioned card.
 - **Describe & guess:** read a Spanish clue, reveal the invention after the other player answers aloud, and record the result. Each player reads five clues.
 - **100 deals:** codes 001–100 reproducibly shuffle all 29 cards. Each seat receives a separate five-card hand. Use the same code, mode and player count, with different player numbers.

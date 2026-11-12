@@ -1,10 +1,10 @@
-// Original editorial illustrations. Everything is drawn locally as SVG.
-const ink = '#214d49';
-const coral = '#df765c';
-const gold = '#dba84d';
-const teal = '#739a8d';
-const pale = '#e8eadc';
-const cream = '#fff8e9';
+// Original collectible emblems. Everything is drawn locally as SVG.
+const ink = '#e9c47b';
+const coral = '#c23f49';
+const gold = '#f0b93e';
+const teal = '#1b977c';
+const pale = '#345d74';
+const cream = '#f8e6b3';
 
 const artwork = {
   fire: {
@@ -127,11 +127,38 @@ const artwork = {
 
 const escapeAttribute = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 
+// Each instance owns its paint servers, including repeated cards in the deck.
+let illustrationInstance = 0;
+
 /** Return an original, self-contained illustration for a historical event. */
 export function illustration(id, className = '') {
   const art = artwork[id];
   if (!art) return '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" class="${escapeAttribute(className)}" role="img" aria-label="${escapeAttribute(art.label)}" focusable="false"><rect width="300" height="200" fill="#f4f0e5"/><circle cx="150" cy="102" r="83" fill="#e3e7d9"/><path d="M27 163h33m-20 8h12m190-130h31m-19 8h9" fill="none" stroke="#bac8b4" stroke-width="2"/><g fill="#b8c5af"><circle cx="40" cy="118" r="1.4"/><circle cx="46" cy="126" r="1.4"/><circle cx="33" cy="129" r="1.4"/><circle cx="262" cy="102" r="1.4"/><circle cx="269" cy="111" r="1.4"/><circle cx="256" cy="114" r="1.4"/></g><g stroke="${ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${art.body}</g></svg>`;
+  const scope = `emblem-${++illustrationInstance}`;
+  const paint = name => `url(#${scope}-${name})`;
+  const body = [[gold, 'gold'], [teal, 'jade'], [coral, 'garnet'], [cream, 'ivory'], [pale, 'lapis']]
+    .reduce((svg, [color, name]) => svg.replaceAll(`fill="${color}"`, `fill="${paint(name)}"`), art.body);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" class="${escapeAttribute(className)}" role="img" aria-label="${escapeAttribute(art.label)}" focusable="false">
+    <defs>
+      <linearGradient id="${scope}-gold" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#fff0a1"/><stop offset=".35" stop-color="#efb635"/><stop offset=".7" stop-color="#bf781b"/><stop offset="1" stop-color="#f0c55e"/></linearGradient>
+      <linearGradient id="${scope}-jade" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#3fc8a0"/><stop offset=".45" stop-color="#17886e"/><stop offset="1" stop-color="#064237"/></linearGradient>
+      <linearGradient id="${scope}-garnet" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#f06c5c"/><stop offset=".4" stop-color="#b72a3a"/><stop offset="1" stop-color="#5e1429"/></linearGradient>
+      <linearGradient id="${scope}-ivory" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff5d1"/><stop offset="1" stop-color="#caab67"/></linearGradient>
+      <linearGradient id="${scope}-lapis" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6596b1"/><stop offset="1" stop-color="#173952"/></linearGradient>
+      <linearGradient id="${scope}-tile" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#183e49"/><stop offset=".55" stop-color="#0c2434"/><stop offset="1" stop-color="#080e23"/></linearGradient>
+      <radialGradient id="${scope}-halo"><stop stop-color="#237764" stop-opacity=".8"/><stop offset=".7" stop-color="#155044" stop-opacity=".35"/><stop offset="1" stop-color="#0b2535" stop-opacity="0"/></radialGradient>
+      <filter id="${scope}-shadow" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#020716" flood-opacity=".8"/></filter>
+    </defs>
+    <rect width="300" height="200" fill="${paint('tile')}"/>
+    <ellipse cx="150" cy="102" rx="119" ry="102" fill="${paint('halo')}"/>
+    <rect x="5" y="5" width="290" height="190" rx="7" fill="none" stroke="${paint('gold')}" stroke-width="2"/>
+    <rect x="11" y="11" width="278" height="178" rx="3" fill="none" stroke="#b68837" stroke-opacity=".38"/>
+    <path d="M20 38V20h20m220 0h20v18M20 162v18h20m220 0h20v-18" fill="none" stroke="${paint('gold')}" stroke-width="3"/>
+    <circle cx="150" cy="102" r="83" fill="none" stroke="#c99b46" stroke-opacity=".16"/>
+    <circle cx="150" cy="102" r="77" fill="none" stroke="#e9c47b" stroke-opacity=".08"/>
+    <path d="M25 100l5-7 5 7-5 7zm240 0l5-7 5 7-5 7z" fill="${paint('gold')}" opacity=".65"/>
+    <g stroke="${ink}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" filter="${paint('shadow')}">${body}</g>
+  </svg>`;
 }
 
 export const illustrationCount = Object.keys(artwork).length;
