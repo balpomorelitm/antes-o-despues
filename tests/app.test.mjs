@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { EVENTS } from '../dist/data.js';
-import { deal, gameKey, moveCard, scoreOrder, sorted, yearLabel } from '../dist/core.js';
+import { deal, groupDeal, groupKey, gameKey, moveCard, scoreOrder, sorted, yearLabel } from '../dist/core.js';
 
 const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8');
 let instance = 0;
@@ -45,6 +45,7 @@ async function boot(context, query = '', saved = {}) {
     text: selector => find(selector)?.textContent.trim(),
     titles: () => all('.game-card h3').map(node => node.textContent.trim()),
     readSave: (code, players, mode) => JSON.parse(window.localStorage.getItem(gameKey(code, players, mode))),
+    readGroup: code => JSON.parse(window.localStorage.getItem(groupKey(code))),
     async click(selector) {
       const element = find(selector);
       assert.ok(element, `Control exists: ${selector}`);
@@ -57,12 +58,32 @@ async function boot(context, query = '', saved = {}) {
       assert.ok(element, `Input exists: ${selector}`);
       element.value = value;
       element.dispatchEvent(new window.Event('input', { bubbles: true }));
+    },
+    change(selector, value) {
+      const element = find(selector);
+      assert.ok(element, `Select exists: ${selector}`);
+      element.value = value;
+      element.dispatchEvent(new window.Event('change', { bubbles: true }));
+    },
+    drag(from, to) {
+      const transfer = { setData() {}, effectAllowed: '', dropEffect: '' };
+      for (const [type, target] of [
+        ['dragstart', find(`[data-card-index="${from}"]`)],
+        ['dragover', find(`[data-card-index="${to}"]`)],
+        ['drop', find(`[data-card-index="${to}"]`)]
+      ]) {
+        const event = new window.Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'dataTransfer', { value: transfer });
+        target.dispatchEvent(event);
+      }
+      window.document.dispatchEvent(new window.Event('dragend', { bubbles: true }));
     }
   };
 }
 
-test('setup rejects invalid codes, normalizes a valid code, and deals the selected third seat', async context => {
+test('group setup rejects invalid codes and starts the complete deck without player or seat controls', async context => {
   const ui = await boot(context);
+  assert.equal(ui.all('[data-players], [data-seat]').length, 0);
   for (const code of ['', '000', '101', 'abc']) {
     ui.input('#game-code', code);
     await ui.click('[data-action="start"]');
@@ -72,60 +93,94 @@ test('setup rejects invalid codes, normalizes a valid code, and deals the select
     assert.equal(ui.find('.game-view'), null);
   }
   ui.input('#game-code', '7');
+  await ui.click('[data-action="start"]');
+  assert.deepEqual(ui.titles(), groupDeal(EVENTS, '007').map(card => card.title));
+  assert.equal(ui.all('.game-card').length, EVENTS.length);
+  assert.equal(ui.all('.hidden-date').length, EVENTS.length);
+  assert.equal(ui.all('.card-date').length, 0);
+  assert.equal(ui.all('[data-switch], [data-action="next-player"]').length, 0);
+  assert.equal(ui.window.location.search, '?game=007&mode=timeline');
+});
+
+test('speaking setup retains two or three readers and five clues per selected seat', async context => {
+  const ui = await boot(context, '?game=007');
+  await ui.click('[data-mode="guess"]');
   await ui.click('[data-players="3"]');
   assert.equal(ui.all('[data-seat]').length, 3);
   assert.equal(ui.find('#game-code').value, '007');
   await ui.click('[data-seat="2"]');
   await ui.click('[data-action="start"]');
-  assert.match(ui.text('.board-instruction h2'), /Player 3/);
-  assert.deepEqual(ui.titles(), deal(EVENTS, '007', 3)[2].map(card => card.title));
-  assert.equal(ui.all('.game-card').length, 5);
-  assert.equal(ui.all('.hidden-date').length, 5);
-  assert.equal(ui.all('.card-date').length, 0);
-  assert.ok(ui.all('.card-content').every(button => button.disabled));
+  assert.match(ui.text('.guess-side'), /Player 3Reads the clue/);
+  assert.match(ui.text('.guess-side'), /Player 1Guesses the invention/);
+  assert.equal(ui.text('.clue-text'), deal(EVENTS, '007', 3)[2][0].before);
+  assert.equal(ui.all('.guess-progress span').length, 5);
   assert.equal(ui.all('[data-switch]').length, 3);
-  assert.equal(ui.window.location.search, '?game=007&players=3&mode=timeline');
+  assert.equal(ui.window.location.search, '?game=007&players=3&mode=guess');
 });
 
-test('timeline moves, first-check scoring, solution, save restoration, and three-player handoff work together', async context => {
+test('group sorting stays editable after checks and hides dates until an explicit reveal', async context => {
   const ui = await boot(context, '?game=023&players=3');
-  const hands = deal(EVENTS, '023', 3);
+  let expected = groupDeal(EVENTS, '023');
   await ui.click('[data-action="start"]');
+  await ui.click('.card-content[data-group-clue]');
+  assert.equal(ui.text('#modal-content h2'), expected[0].title);
+  assert.equal(ui.find('#modal-content .date-block'), null);
+  assert.deepEqual(ui.all('#modal-content .practice-block p').map(node => node.textContent), [expected[0].before, expected[0].after]);
+  assert.equal(ui.find('#modal-content .historical-note'), null, 'Notes cannot leak the hidden reference date');
+  await ui.click('.modal-close');
   await ui.click('[data-move="0,1"]');
-  const moved = moveCard(hands[0], 0, 1);
-  assert.deepEqual(ui.titles(), moved.map(card => card.title));
-  assert.deepEqual(ui.readSave('023', 3, 'timeline').orders[0], moved.map(card => card.id));
+  expected = moveCard(expected, 0, 1);
+  assert.deepEqual(ui.titles(), expected.map(card => card.title));
+  assert.deepEqual(ui.readGroup('023').order, expected.map(card => card.id));
   assert.equal(ui.window.document.activeElement.closest('.game-card').dataset.cardIndex, '1');
-
   await ui.click('[data-action="check"]');
-  const firstScore = scoreOrder(moved);
-  assert.equal(ui.text('.result-score'), `${firstScore}/5`);
-  assert.equal(ui.all('.card-date').length, 5);
-  assert.equal(ui.all('[data-move]').length, 0);
-  assert.equal(ui.all('.game-card[draggable="true"]').length, 0);
-  await ui.click('[data-action="solution"]');
-  assert.deepEqual(ui.titles(), sorted(hands[0]).map(card => card.title));
-  assert.equal(ui.text('.result-score'), `${firstScore}/5`, 'The solution does not replace the first score');
-  assert.equal(ui.readSave('023', 3, 'timeline').results[0], firstScore);
-
+  assert.equal(ui.text('.group-status strong').replace(/\s/g, ''), `${scoreOrder(expected)}/${EVENTS.length}`);
+  assert.equal(ui.all('.game-card.correct').length, scoreOrder(expected));
+  assert.equal(ui.all('.card-date').length, 0);
+  assert.equal(ui.all('.game-card[draggable="true"]').length, EVENTS.length);
+  assert.ok(ui.all('select[data-position]').every(select => !select.disabled));
+  assert.equal(ui.readGroup('023').checked, true);
+  await ui.click('[data-move="1,0"]');
+  expected = moveCard(expected, 1, 0);
+  assert.equal(ui.readGroup('023').checked, false, 'Moving clears stale position feedback');
+  ui.change('[data-position="0"]', String(EVENTS.length - 1));
+  expected = moveCard(expected, 0, EVENTS.length - 1);
+  assert.deepEqual(ui.titles(), expected.map(card => card.title));
+  assert.equal(ui.window.document.activeElement.dataset.position, String(EVENTS.length - 1));
+  await ui.click('[data-action="check"]');
+  ui.drag(EVENTS.length - 1, 2);
+  expected = moveCard(expected, EVENTS.length - 1, 2);
+  assert.deepEqual(ui.titles(), expected.map(card => card.title));
+  assert.equal(ui.readGroup('023').checked, false);
+  assert.equal(ui.all('.card-date').length, 0);
+  await ui.click('[data-action="reveal-dates"]');
+  assert.equal(ui.all('.card-date').length, EVENTS.length);
+  assert.equal(ui.all('.card-content[data-detail]').length, EVENTS.length);
+  await ui.click('.card-content[data-detail]');
+  assert.equal(ui.text('#modal-content .date-block strong'), yearLabel(expected[0].year));
+  assert.equal(ui.text('#modal-content .date-block span'), expected[0].approx);
+  await ui.click('.modal-close');
+  await ui.click('[data-action="reveal-dates"]');
+  assert.equal(ui.all('.card-date').length, 0);
+  await ui.click('[data-action="check"]');
   await ui.click('[data-action="setup"]');
   await ui.click('[data-action="start"]');
-  assert.equal(ui.text('.result-score'), `${firstScore}/5`, 'The checked score is restored');
-  assert.deepEqual(ui.titles(), sorted(hands[0]).map(card => card.title));
-  for (let seat = 1; seat < 3; seat++) {
-    await ui.click('[data-action="next-player"]');
-    assert.ok(ui.find('#modal').open);
-    assert.match(ui.text('#modal-content h2'), new RegExp(`Player ${seat + 1}`));
-    await ui.click(`[data-ready="${seat}"]`);
-    assert.equal(ui.find('#modal').open, false);
-    assert.deepEqual(ui.titles(), hands[seat].map(card => card.title));
-    assert.equal(ui.all('.hidden-date').length, 5);
-    await ui.click('[data-action="check"]');
-  }
-  await ui.click('[data-action="next-player"]');
-  const expected = [firstScore, scoreOrder(hands[1]), scoreOrder(hands[2])];
-  assert.deepEqual(ui.all('.score-list strong').map(node => node.textContent.replace(/\s/g, '')), expected.map(score => `${score}/5`));
-  assert.ok(ui.find('#modal').open);
+  assert.deepEqual(ui.titles(), expected.map(card => card.title));
+  assert.equal(ui.readGroup('023').checked, true);
+  assert.equal(ui.all('.card-date').length, 0);
+  await ui.click('[data-action="solution"]');
+  assert.deepEqual(ui.titles(), sorted(EVENTS).map(card => card.title));
+  assert.equal(ui.all('.game-card.correct').length, EVENTS.length);
+  assert.equal(ui.all('.card-date').length, EVENTS.length);
+  assert.deepEqual(ui.readGroup('023'), { version: 2, order: sorted(EVENTS).map(card => card.id), checked: true, revealed: true });
+  await ui.click('[data-move="0,1"]');
+  assert.equal(ui.readGroup('023').checked, false);
+  await ui.click('[data-action="restart"]');
+  await ui.click('[data-action="confirm-restart"]');
+  assert.deepEqual(ui.titles(), groupDeal(EVENTS, '023').map(card => card.title));
+  assert.equal(ui.all('.card-date').length, 0);
+  assert.deepEqual(ui.readGroup('023'), { version: 2, order: groupDeal(EVENTS, '023').map(card => card.id), checked: false, revealed: false });
+  assert.equal(ui.all('[data-switch], [data-action="next-player"]').length, 0);
 });
 
 test('describe and guess hides answers, completes five clues, and credits the guesser', async context => {
@@ -147,7 +202,7 @@ test('describe and guess hides answers, completes five clues, and credits the gu
     if (index === 0) {
       await ui.click('.guess-reveal [data-detail]');
       assert.equal(ui.text('#modal-content h2'), card.title);
-      assert.match(ui.text('.practice-block'), /BEFORE \/ IMPERFECT/);
+      assert.deepEqual(ui.all('.practice-block p').map(node => node.textContent), [card.before, card.after]);
       await ui.click('.modal-close');
     }
     await ui.click(`[data-mark="${marks[index] ? 1 : 0}"]`);
@@ -169,13 +224,13 @@ test('describe and guess hides answers, completes five clues, and credits the gu
   assert.equal(ui.text('#modal-content h2'), 'Player 1 has the highest score.');
 });
 
-test('timeline and speaking progress are saved independently for the same deal', async context => {
+test('group and speaking progress are saved independently for the same code', async context => {
   const ui = await boot(context, '?game=010&players=2');
   await ui.click('[data-action="start"]');
   await ui.click('[data-move="1,2"]');
   await ui.click('[data-action="check"]');
-  const timeline = ui.readSave('010', 2, 'timeline');
-  const score = ui.text('.result-score');
+  const timeline = ui.readGroup('010');
+  const score = ui.text('.group-status');
   await ui.click('[data-action="setup"]');
   await ui.click('[data-mode="guess"]');
   await ui.click('[data-action="start"]');
@@ -183,12 +238,12 @@ test('timeline and speaking progress are saved independently for the same deal',
   await ui.click('[data-action="reveal"]');
   await ui.click('[data-mark="1"]');
   assert.equal(ui.readSave('010', 2, 'guess').guess[0].index, 1);
-  assert.deepEqual(ui.readSave('010', 2, 'timeline'), timeline, 'Speaking does not change the timeline save');
+  assert.deepEqual(ui.readGroup('010'), timeline, 'Speaking does not change the group save');
   await ui.click('[data-action="setup"]');
   await ui.click('[data-mode="timeline"]');
   await ui.click('[data-action="start"]');
-  assert.equal(ui.text('.result-score'), score);
-  assert.deepEqual(ui.readSave('010', 2, 'timeline'), timeline);
+  assert.equal(ui.text('.group-status'), score);
+  assert.deepEqual(ui.readGroup('010'), timeline);
   await ui.click('[data-action="setup"]');
   await ui.click('[data-mode="guess"]');
   await ui.click('[data-action="start"]');
@@ -201,7 +256,7 @@ test('library search ignores accents and filters by inventor or category', async
   assert.equal(ui.all('.library-card').length, EVENTS.length);
   assert.equal(ui.all('.library-approx').length, EVENTS.length);
   ui.input('#library-search', 'movil');
-  assert.deepEqual(new Set(ui.all('.library-card').map(card => card.dataset.detail)), new Set(['mobile', 'movable']));
+  assert.ok(ui.all('.library-card').some(card => card.dataset.detail === 'mobile'), 'An unaccented query finds El móvil');
   await ui.click('.library-card[data-detail="mobile"]');
   const mobile = EVENTS.find(card => card.id === 'mobile');
   assert.equal(ui.text('#modal-content h2'), mobile.title);

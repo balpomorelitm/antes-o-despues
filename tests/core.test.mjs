@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENTS } from '../dist/data.js';
 import { illustration, illustrationCount } from '../dist/art.js';
-import { normalizeCode, shuffled, deal, sorted, scoreOrder, moveCard, yearLabel, gameKey } from '../dist/core.js';
+import { normalizeCode, shuffled, deal, groupDeal, groupKey, sorted, scoreOrder, moveCard, yearLabel, gameKey } from '../dist/core.js';
+import { createGroupSession, validGroupSession } from '../dist/group.js';
 
 const ids = cards => cards.map(card => card.id);
 const handIds = hands => hands.map(ids);
@@ -19,7 +20,7 @@ test('game codes accept the complete 001–100 range and normalize short inputs'
   }
 });
 
-test('all 100 codes produce repeatable and distinct deals without duplicate cards', () => {
+test('all 100 codes produce repeatable five-card reader hands without duplicates', () => {
   const originalOrder = ids(EVENTS);
   const allDeals = new Set();
   const seen = new Set();
@@ -42,6 +43,36 @@ test('all 100 codes produce repeatable and distinct deals without duplicate card
   assert.equal(allDeals.size, 100, 'All 100 game codes offer a different deal');
   assert.equal(seen.size, EVENTS.length, 'Every milestone appears in at least one game');
   assert.deepEqual(ids(EVENTS), originalOrder, 'Dealing leaves the source deck untouched');
+});
+
+test('all 100 group codes include the complete deck exactly once in a repeatable starting order', () => {
+  const sourceOrder = ids(EVENTS);
+  const starts = new Set();
+  for (let number = 1; number <= 100; number++) {
+    const code = String(number).padStart(3, '0');
+    const order = groupDeal(EVENTS, code);
+    assert.equal(order.length, EVENTS.length);
+    assert.equal(new Set(ids(order)).size, EVENTS.length);
+    assert.deepEqual(ids(order).sort(), [...sourceOrder].sort());
+    assert.deepEqual(ids(groupDeal(EVENTS, number)), ids(order));
+    assert.deepEqual(ids(groupDeal(EVENTS, code)), ids(order));
+    starts.add(JSON.stringify(ids(order)));
+  }
+  assert.equal(starts.size, 100);
+  assert.deepEqual(ids(EVENTS), sourceOrder, 'The shared deck is not mutated');
+  for (const code of ['000', '101', 'bad']) assert.throws(() => groupDeal(EVENTS, code), /Invalid game code/);
+});
+
+test('group sessions accept only a complete deck with boolean check and reveal state', () => {
+  const fresh = createGroupSession(EVENTS, '042');
+  assert.deepEqual(fresh, { version: 2, order: ids(groupDeal(EVENTS, '042')), checked: false, revealed: false });
+  assert.ok(validGroupSession(fresh, fresh));
+  assert.ok(validGroupSession({ ...fresh, order: [...fresh.order].reverse(), checked: true, revealed: true }, fresh));
+  for (const bad of [
+    null, { ...fresh, version: 1 }, { ...fresh, order: fresh.order.slice(1) },
+    { ...fresh, order: fresh.order.map((id, index) => index === 0 ? fresh.order[1] : id) },
+    { ...fresh, checked: 1 }, { ...fresh, revealed: 'false' }
+  ]) assert.ok(!validGroupSession(bad, fresh));
 });
 
 test('the seeded shuffle preserves its published mapping independently of deck content', () => {
@@ -121,11 +152,12 @@ test('Spanish dates distinguish BCE years from CE years', () => {
   assert.equal(yearLabel(1953), '1953');
 });
 
-test('saved sessions are isolated by game, player count, and game mode', () => {
-  assert.equal(gameKey('1', 2, 'timeline'), gameKey('001', 2, 'timeline'));
+test('group progress and reader hands use separate normalized storage keys', () => {
+  assert.equal(groupKey('1'), groupKey('001'));
+  assert.equal(gameKey('1', 2, 'guess'), gameKey('001', 2, 'guess'));
   assert.equal(new Set([
-    gameKey('001', 2, 'timeline'), gameKey('002', 2, 'timeline'),
-    gameKey('001', 3, 'timeline'), gameKey('001', 2, 'guess')
+    groupKey('001'), groupKey('002'),
+    gameKey('001', 3, 'guess'), gameKey('001', 2, 'guess')
   ]).size, 4);
 });
 
@@ -140,6 +172,10 @@ test('the deck has unique identifiers and fixed, unique years with Spanish learn
       assert.ok(typeof event[field] === 'string' && event[field].trim().length > 0, `${event.id}: ${field}`);
     }
     assert.match(event.before, /^Antes de este /, `${event.id}: Spanish clue`);
+    assert.ok(event.before.trim().split(/\s+/).length <= 25, `${event.id}: short A2 clue`);
+    assert.ok(event.after.trim().split(/\s+/).length <= 25, `${event.id}: short A2 explanation`);
+    assert.doesNotMatch(`${event.before} ${event.after}`, /\b(?:pudiera[n]?|pudiese[n]?|hubiera[n]?|hubiese[n]?|tuviera[n]?|tuviese[n]?|hiciera[n]?|hiciese[n]?|supiera[n]?|supiese[n]?)\b/i, `${event.id}: avoid advanced subjunctive forms`);
+    assert.ok(!event.before.includes(String(Math.abs(event.year))), `${event.id}: the clue does not give away its reference year`);
     assert.equal(new URL(event.source).protocol, 'https:');
   }
 });

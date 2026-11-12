@@ -15,3 +15,7 @@ Use case: stylized-concept. Asset type: panoramic background illustration for an
 ## Card art
 
 `dist/art.js` contains the 29 original SVG illustrations. The imperial version adds jade, garnet, lapis, bronze and ivory gradients, gold borders and outlines, and layered highlights. SVG paint IDs are unique per rendered instance so several cards can safely share a page.
+
+## Supplied class images
+
+`dist/assets/class-people.png`, `class-events.png` and `class-time.png` preserve the exact original image bytes supplied in the conversation. `class-lexicon.jpg` is the user-specified A2 vocabulary reference. The first image supplies the 12 inventor portraits through accessible SVG viewports in `dist/photos.js`; the source bitmaps are unchanged. Inventor portraits accompany the corresponding invention illustration. All four references can be opened from the setup screen.
