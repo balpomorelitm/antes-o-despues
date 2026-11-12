@@ -45,32 +45,42 @@ test('all 100 codes produce repeatable five-card reader hands without duplicates
   assert.deepEqual(ids(EVENTS), originalOrder, 'Dealing leaves the source deck untouched');
 });
 
-test('all 100 group codes include the complete deck exactly once in a repeatable starting order', () => {
+test('all 100 group codes select six unique random cards in a repeatable starting order', () => {
   const sourceOrder = ids(EVENTS);
   const starts = new Set();
+  const selections = new Set();
+  const seen = new Set();
   for (let number = 1; number <= 100; number++) {
     const code = String(number).padStart(3, '0');
     const order = groupDeal(EVENTS, code);
-    assert.equal(order.length, EVENTS.length);
-    assert.equal(new Set(ids(order)).size, EVENTS.length);
-    assert.deepEqual(ids(order).sort(), [...sourceOrder].sort());
+    assert.equal(order.length, 6);
+    assert.equal(new Set(ids(order)).size, 6);
+    assert.ok(order.every(card => EVENTS.includes(card)), 'Selected cards belong to the complete library');
     assert.deepEqual(ids(groupDeal(EVENTS, number)), ids(order));
     assert.deepEqual(ids(groupDeal(EVENTS, code)), ids(order));
     starts.add(JSON.stringify(ids(order)));
+    selections.add(JSON.stringify(ids(order).sort()));
+    for (const card of order) seen.add(card.id);
   }
   assert.equal(starts.size, 100);
+  assert.equal(selections.size, 100, 'Different codes change the selected cards, not only their order');
+  assert.equal(seen.size, EVENTS.length, 'Every library card can appear in a six-card game');
   assert.deepEqual(ids(EVENTS), sourceOrder, 'The shared deck is not mutated');
   for (const code of ['000', '101', 'bad']) assert.throws(() => groupDeal(EVENTS, code), /Invalid game code/);
 });
 
-test('group sessions accept only a complete deck with boolean check and reveal state', () => {
+test('group sessions accept only their selected six cards with boolean check and reveal state', () => {
   const fresh = createGroupSession(EVENTS, '042');
   assert.deepEqual(fresh, { version: 2, order: ids(groupDeal(EVENTS, '042')), checked: false, revealed: false });
+  assert.equal(fresh.order.length, 6);
   assert.ok(validGroupSession(fresh, fresh));
   assert.ok(validGroupSession({ ...fresh, order: [...fresh.order].reverse(), checked: true, revealed: true }, fresh));
+  const undealt = EVENTS.find(card => !fresh.order.includes(card.id)).id;
   for (const bad of [
     null, { ...fresh, version: 1 }, { ...fresh, order: fresh.order.slice(1) },
     { ...fresh, order: fresh.order.map((id, index) => index === 0 ? fresh.order[1] : id) },
+    { ...fresh, order: [undealt, ...fresh.order.slice(1)] },
+    { ...fresh, order: ids(EVENTS), checked: true, revealed: true },
     { ...fresh, checked: 1 }, { ...fresh, revealed: 'false' }
   ]) assert.ok(!validGroupSession(bad, fresh));
 });

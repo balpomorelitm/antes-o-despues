@@ -20,5 +20,6 @@ export function scoreOrder(cards){const correct=sorted(cards);return cards.reduc
 export function moveCard(cards,from,to){const result=[...cards];if(from<0||from>=cards.length||to<0||to>=cards.length)return result;const [card]=result.splice(from,1);result.splice(to,0,card);return result;}
 export function yearLabel(year){return year<0?`${Math.abs(year).toLocaleString('es-ES')} a. C.`:String(year);}
 export function gameKey(code,players,mode){return `aod-v1-${normalizeCode(code)}-${players}-${mode}`;}
-export function groupDeal(events,code){if(!normalizeCode(code))throw Error('Invalid game code');return shuffled(events,code);}
+export const GROUP_CARD_COUNT=6;
+export function groupDeal(events,code){if(!normalizeCode(code))throw Error('Invalid game code');return shuffled(events,code).slice(0,GROUP_CARD_COUNT);}
 export function groupKey(code){return `aod-group-v2-${normalizeCode(code)}`;}
